@@ -235,6 +235,7 @@ built app bundle if you package one).
 wispr/
   run.py                  # entry point: python run.py
   requirements.txt
+  LICENSE                 # MIT License
   settings.json            # your local config (hotkey, engine, model)
   .env                      # your local API keys (not committed)
   .env.example
@@ -269,3 +270,10 @@ wispr/
 - **Pasted text lands in the wrong window.** Make sure the window you want to
   dictate into has focus *before* you hold the hotkey — Wispr pastes wherever
   focus already is, it doesn't change focus itself.
+
+---
+
+## License
+
+Distributed under the [MIT License](LICENSE).
+
