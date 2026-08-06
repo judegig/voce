@@ -41,7 +41,7 @@ def clean_transcript(raw_text: str, settings: Settings) -> str:
             messages=[{"role": "user", "content": raw_text}],
         )
     except Exception as exc:  # noqa: BLE001 - cleanup must never break dictation
-        print(f"[wispr] cleanup failed, pasting raw transcript instead: {exc}")
+        print(f"[voce] cleanup failed, pasting raw transcript instead: {exc}")
         return raw_text
 
     text = "".join(block.text for block in response.content if block.type == "text")

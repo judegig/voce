@@ -86,7 +86,7 @@ class TrayApp:
                 checked=lambda item: self._tap_to_toggle,
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit Wispr", self._handle_quit),
+            pystray.MenuItem("Quit Voce", self._handle_quit),
         )
 
     def _make_device_action(self, index: Optional[int]) -> Callable:
@@ -179,7 +179,7 @@ class TrayApp:
 
     def run_in_background(self) -> None:
         image = _make_icon_image("#4ade80" if self._enabled else "#6b7280")
-        self._icon = pystray.Icon("wispr", image, "Wispr Dictation", self._build_menu())
+        self._icon = pystray.Icon("voce", image, "Voce Dictation", self._build_menu())
         threading.Thread(target=self._icon.run, daemon=True).start()
 
     def stop(self) -> None:

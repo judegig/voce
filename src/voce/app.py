@@ -23,7 +23,7 @@ MIN_RECORDING_SECONDS = 0.3
 ENTRY_POINT = Path(__file__).resolve().parent.parent.parent / "run.py"
 
 
-class WisprApp:
+class VoceApp:
     def __init__(self) -> None:
         self.settings: Settings = load_settings()
         self._enabled = True
@@ -86,7 +86,7 @@ class WisprApp:
             return self._make_hotkey()
         except ValueError as exc:
             print(
-                f"[wispr] {exc} Falling back to default hotkey "
+                f"[voce] {exc} Falling back to default hotkey "
                 f"{Settings.hotkey!r}."
             )
             self.settings.hotkey = Settings.hotkey
@@ -154,7 +154,7 @@ class WisprApp:
         try:
             result = transcribe(audio_path, self.settings)
         except TranscriptionError as exc:
-            print(f"[wispr] transcription failed: {exc}")
+            print(f"[voce] transcription failed: {exc}")
             return
         finally:
             audio_path.unlink(missing_ok=True)
@@ -167,7 +167,7 @@ class WisprApp:
         # what was already forced, which isn't news to the user and isn't
         # what requirement 4 (auto-detect) asked to surface.
         if self.settings.transcription.auto_detect_language and result.language:
-            print(f"[wispr] detected language: {result.language}")
+            print(f"[voce] detected language: {result.language}")
             language = result.language
             self._root.after(0, lambda: self._maybe_flash_language(language))
 
@@ -229,7 +229,7 @@ class WisprApp:
             try:
                 new_hotkey = self._make_hotkey(combo)
             except ValueError as exc:
-                print(f"[wispr] failed to set hotkey: {exc}")
+                print(f"[voce] failed to set hotkey: {exc}")
                 self._root.after(0, lambda: self._pill.flash_message("Invalid hotkey"))
                 self._hotkey.start()
                 return
@@ -257,4 +257,4 @@ class WisprApp:
 
 
 def main() -> None:
-    WisprApp().run()
+    VoceApp().run()

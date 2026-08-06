@@ -68,7 +68,7 @@ class Recorder:
             self._stream.stop()
             self._stream.close()
         except Exception as exc:  # noqa: BLE001 - never block on teardown
-            print(f"[wispr] error closing audio stream: {exc}")
+            print(f"[voce] error closing audio stream: {exc}")
         finally:
             self._stream = None
 
@@ -100,7 +100,7 @@ class Recorder:
             # between runs. Fall back to the system default rather than
             # leaving the hotkey listener dead until the app is restarted.
             print(
-                f"[wispr] failed to open input device {self.device!r} ({exc}); "
+                f"[voce] failed to open input device {self.device!r} ({exc}); "
                 f"falling back to system default"
             )
             self._stream = sd.InputStream(

@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-APP_NAME = "WisprDictation"
+APP_NAME = "VoceDictation"
 
 
 def set_enabled(enabled: bool, entry_point: Path) -> None:
@@ -20,7 +20,7 @@ def set_enabled(enabled: bool, entry_point: Path) -> None:
     elif sys.platform.startswith("linux"):
         _set_linux(enabled, entry_point)
     else:
-        print(f"[wispr] launch-at-login is not implemented for platform {sys.platform!r}")
+        print(f"[voce] launch-at-login is not implemented for platform {sys.platform!r}")
 
 
 def _set_windows(enabled: bool, entry_point: Path) -> None:
@@ -41,7 +41,7 @@ def _set_windows(enabled: bool, entry_point: Path) -> None:
 
 
 def _macos_plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"com.wispr.{APP_NAME.lower()}.plist"
+    return Path.home() / "Library" / "LaunchAgents" / f"com.voce.{APP_NAME.lower()}.plist"
 
 
 def _set_macos(enabled: bool, entry_point: Path) -> None:
@@ -56,7 +56,7 @@ def _set_macos(enabled: bool, entry_point: Path) -> None:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.wispr.{APP_NAME.lower()}</string>
+    <string>com.voce.{APP_NAME.lower()}</string>
     <key>ProgramArguments</key>
     <array>
         <string>{sys.executable}</string>

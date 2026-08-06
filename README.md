@@ -1,7 +1,7 @@
-# Wispr
+# Voce
 
 A lightweight, offline-first, system-wide dictation tool. Hold a hotkey anywhere
-on your system, speak, release — Wispr transcribes your speech, cleans it up
+on your system, speak, release — Voce transcribes your speech, cleans it up
 (removes filler words, fixes punctuation and casing), and pastes it at your
 cursor.
 
@@ -65,7 +65,7 @@ pip install -r requirements.txt
 
 ### 3. Set up transcription
 
-Wispr supports three transcription engines, configured in `settings.json` ->
+Voce supports three transcription engines, configured in `settings.json` ->
 `transcription.engine`:
 
 #### Option A — `"local"` (default, fully offline)
@@ -126,7 +126,7 @@ ANTHROPIC_API_KEY=your-key-here
 ```
 
 If this key is absent, or `cleanup.enabled` is `false` in `settings.json`,
-Wispr pastes the raw transcript unmodified — dictation still works, you just
+Voce pastes the raw transcript unmodified — dictation still works, you just
 skip the cleanup pass.
 
 ### 5. Run it
@@ -162,7 +162,7 @@ A tray icon should appear. Hold Right Ctrl, say something, and release.
 `hotkey`, and `hotkey_mode` are normally changed from the tray menu (which
 also writes them back to this file) and apply immediately, no restart.
 Everything else requires editing `settings.json` directly and restarting
-Wispr.
+Voce.
 
 ---
 
@@ -171,7 +171,7 @@ Wispr.
 ### Windows
 
 - **Microphone:** Windows will prompt for microphone access the first time
-  Wispr records, or you can pre-grant it under
+  Voce records, or you can pre-grant it under
   **Settings -> Privacy & security -> Microphone** -> enable "Let desktop apps
   access your microphone."
 - **Global keyboard hook:** `pynput` installs a low-level keyboard hook to
@@ -232,14 +232,14 @@ built app bundle if you package one).
 ## Project structure
 
 ```
-wispr/
+voce/
   run.py                  # entry point: python run.py
   requirements.txt
   LICENSE                 # MIT License
   settings.json            # your local config (hotkey, engine, model)
   .env                      # your local API keys (not committed)
   .env.example
-  src/wispr/
+  src/voce/
     app.py                 # orchestrates everything, owns the Tk mainloop
     config.py              # settings.json + .env loading
     audio.py                # microphone capture -> WAV
@@ -265,10 +265,10 @@ wispr/
 - **Cleanup silently does nothing (raw text pastes unchanged).** This is
   expected if `ANTHROPIC_API_KEY` isn't set in `.env`, or `cleanup.enabled` is
   `false`. Check the terminal — a failed cleanup call logs a
-  `[wispr] cleanup failed, pasting raw transcript instead: ...` line rather
+  `[voce] cleanup failed, pasting raw transcript instead: ...` line rather
   than crashing.
 - **Pasted text lands in the wrong window.** Make sure the window you want to
-  dictate into has focus *before* you hold the hotkey — Wispr pastes wherever
+  dictate into has focus *before* you hold the hotkey — Voce pastes wherever
   focus already is, it doesn't change focus itself.
 
 ---

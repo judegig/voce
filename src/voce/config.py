@@ -56,7 +56,7 @@ def _valid_hotkey_mode(value: object) -> str:
     if value in HOTKEY_MODES:
         return str(value)
     print(
-        f"[wispr] invalid hotkey_mode {value!r} in settings.json; "
+        f"[voce] invalid hotkey_mode {value!r} in settings.json; "
         f"expected one of {HOTKEY_MODES}. Falling back to "
         f"{Settings.hotkey_mode!r}."
     )
@@ -105,7 +105,7 @@ def load_settings() -> Settings:
             # A hand-edited settings.json with a stray comma shouldn't stop
             # the app from starting -- run on defaults and say why.
             print(
-                f"[wispr] could not read settings.json ({exc}); "
+                f"[voce] could not read settings.json ({exc}); "
                 f"using default settings for this run."
             )
             return Settings()

@@ -65,7 +65,7 @@ def _transcribe_local(audio_path: Path, settings: Settings) -> TranscriptionResu
         # can only ever produce English. Without this, switching language
         # or enabling auto-detect in the tray would silently do nothing.
         print(
-            f"[wispr] '{model.name}' is an English-only model; language "
+            f"[voce] '{model.name}' is an English-only model; language "
             f"selection and auto-detect have no effect on it. Use a "
             f"non-'.en' model (e.g. ggml-small.bin) for other languages."
         )
