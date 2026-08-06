@@ -38,6 +38,9 @@ The tray icon menu lets you:
 - **Change Hotkey...** — click it, then press (and release) whatever key or
   key combo you want to use instead. The pill shows "Press new hotkey..."
   while it's listening. Press Esc to cancel without changing anything.
+- **Tap to Start/Stop (instead of Hold)** — switches the hotkey from
+  hold-to-talk to tap-to-toggle: tap the hotkey once to start recording,
+  tap it again to stop. No need to hold anything down.
 
 Device and language changes take effect on your *next* recording — no restart
 needed, since both are read fresh from `settings.json` each time you hold the
@@ -140,7 +143,8 @@ A tray icon should appear. Hold Right Ctrl, say something, and release.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `hotkey` | `"ctrl_r"` | The hold-to-talk key. A single [pynput key name](https://pynput.readthedocs.io/en/latest/keyboard.html#pynput.keyboard.Key) (e.g. `"f9"`, `"alt_r"`) or a `+`-joined combo (e.g. `"ctrl+alt"`). Normally set from the tray menu's **Change Hotkey...** item, which applies immediately, no restart needed. Editing this by hand still works too, but does require a restart. |
+| `hotkey` | `"ctrl_r"` | The hotkey. A single [pynput key name](https://pynput.readthedocs.io/en/latest/keyboard.html#pynput.keyboard.Key) (e.g. `"f9"`, `"alt_r"`) or a `+`-joined combo (e.g. `"ctrl+alt"`). Normally set from the tray menu's **Change Hotkey...** item, which applies immediately, no restart needed. Editing this by hand still works too, but does require a restart. |
+| `hotkey_mode` | `"hold"` | `"hold"` (hold the hotkey down to record, release to stop) or `"toggle"` (tap the hotkey to start, tap it again to stop). Normally set from the tray menu's **Tap to Start/Stop** checkbox, which applies immediately, no restart needed. |
 | `sample_rate` | `16000` | Microphone sample rate in Hz. 16kHz is what whisper.cpp expects. |
 | `input_device` | `null` | Microphone/input device index, or `null` for the system default. Normally set from the tray menu's "Input Device" submenu, not edited by hand — takes effect on the next recording, no restart. |
 | `transcription.engine` | `"local"` | `"local"`, `"groq"`, or `"openai"`. |
@@ -155,9 +159,10 @@ A tray icon should appear. Hold Right Ctrl, say something, and release.
 | `launch_at_login` | `false` | Kept in sync automatically when you toggle it from the tray menu. |
 
 `input_device`, `transcription.language`, `transcription.auto_detect_language`,
-and `hotkey` are normally changed from the tray menu (which also writes them
-back to this file) and apply immediately, no restart. Everything else
-requires editing `settings.json` directly and restarting Wispr.
+`hotkey`, and `hotkey_mode` are normally changed from the tray menu (which
+also writes them back to this file) and apply immediately, no restart.
+Everything else requires editing `settings.json` directly and restarting
+Wispr.
 
 ---
 

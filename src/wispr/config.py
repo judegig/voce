@@ -38,11 +38,29 @@ class CleanupConfig:
 @dataclass
 class Settings:
     hotkey: str = "ctrl_r"
+    hotkey_mode: str = "hold"  # "hold" (hold to talk) | "toggle" (tap to start/stop)
     sample_rate: int = 16000
     input_device: Optional[int] = None  # None = system default input device
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     launch_at_login: bool = False
+
+
+HOTKEY_MODES = ("hold", "toggle")
+
+
+def _valid_hotkey_mode(value: object) -> str:
+    """settings.json is hand-editable (the README says so), so a typo here
+    must not take the app down. Anything unrecognized falls back to the
+    default with a warning instead of raising at construction time."""
+    if value in HOTKEY_MODES:
+        return str(value)
+    print(
+        f"[wispr] invalid hotkey_mode {value!r} in settings.json; "
+        f"expected one of {HOTKEY_MODES}. Falling back to "
+        f"{Settings.hotkey_mode!r}."
+    )
+    return Settings.hotkey_mode
 
 
 def _settings_from_dict(data: dict) -> Settings:
@@ -52,6 +70,7 @@ def _settings_from_dict(data: dict) -> Settings:
 
     return Settings(
         hotkey=data.get("hotkey", Settings.hotkey),
+        hotkey_mode=_valid_hotkey_mode(data.get("hotkey_mode", Settings.hotkey_mode)),
         sample_rate=data.get("sample_rate", Settings.sample_rate),
         input_device=data.get("input_device", Settings.input_device),
         transcription=TranscriptionConfig(
@@ -80,7 +99,16 @@ def load_settings() -> Settings:
     object. Creates settings.json with defaults on first run."""
     load_dotenv(ENV_PATH)
     if SETTINGS_PATH.exists():
-        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            # A hand-edited settings.json with a stray comma shouldn't stop
+            # the app from starting -- run on defaults and say why.
+            print(
+                f"[wispr] could not read settings.json ({exc}); "
+                f"using default settings for this run."
+            )
+            return Settings()
         return _settings_from_dict(data)
     settings = Settings()
     save_settings(settings)

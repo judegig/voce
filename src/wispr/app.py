@@ -33,6 +33,9 @@ class WisprApp:
         # this safe to use as a "is a newer recording active" guard against
         # a stale background transcription result. See _maybe_flash_language.
         self._recording = False
+        # Non-blocking guard so two rapid "Change Hotkey..." clicks can't
+        # each spawn a capture thread. See _on_change_hotkey.
+        self._capture_lock = threading.Lock()
         self._recorder = Recorder(
             sample_rate=self.settings.sample_rate,
             device=self.settings.input_device,
@@ -46,11 +49,7 @@ class WisprApp:
         self._root.withdraw()  # no main window — just drives the Tk event loop
 
         self._pill = RecordingPill(self._root)
-        self._hotkey = HoldToTalkHotkey(
-            self.settings.hotkey,
-            on_start=self._on_hotkey_down,
-            on_stop=self._on_hotkey_up,
-        )
+        self._hotkey = self._make_hotkey_or_default()
         self._tray = TrayApp(
             on_toggle_enabled=self._on_toggle_enabled,
             on_toggle_login=self._on_toggle_login,
@@ -58,6 +57,7 @@ class WisprApp:
             on_select_language=self._on_select_language,
             on_toggle_auto_detect=self._on_toggle_auto_detect,
             on_change_hotkey=self._on_change_hotkey,
+            on_toggle_tap_mode=self._on_toggle_tap_mode,
             on_quit=self._on_quit,
             enabled=True,
             launch_at_login=self.settings.launch_at_login,
@@ -66,7 +66,46 @@ class WisprApp:
             languages=LANGUAGES,
             current_language=self.settings.transcription.language,
             auto_detect_language=self.settings.transcription.auto_detect_language,
+            tap_to_toggle=self.settings.hotkey_mode == "toggle",
         )
+
+    def _make_hotkey(self, combo: Optional[str] = None) -> HoldToTalkHotkey:
+        return HoldToTalkHotkey(
+            combo if combo is not None else self.settings.hotkey,
+            on_start=self._on_hotkey_down,
+            on_stop=self._on_hotkey_up,
+            mode=self.settings.hotkey_mode,
+        )
+
+    def _make_hotkey_or_default(self) -> HoldToTalkHotkey:
+        """Builds the configured hotkey, falling back to the built-in default
+        if settings.json holds an unparseable combo. Used at startup, where
+        raising would mean the app never launches at all -- and the README
+        tells users they may hand-edit that file."""
+        try:
+            return self._make_hotkey()
+        except ValueError as exc:
+            print(
+                f"[wispr] {exc} Falling back to default hotkey "
+                f"{Settings.hotkey!r}."
+            )
+            self.settings.hotkey = Settings.hotkey
+            return self._make_hotkey()
+
+    def _swap_hotkey(self, new_hotkey: HoldToTalkHotkey) -> None:
+        """Replaces the active listener. Any recording still in progress is
+        stopped and discarded first: the new listener starts with its own
+        fresh "am I recording" state, so without this the old recording is
+        orphaned -- in toggle mode the mic would keep capturing with the
+        pill already hidden, and there'd be no tap that stops it."""
+        self._hotkey.stop()
+        if self._recorder.is_recording:
+            audio_path, _ = self._recorder.stop()
+            if audio_path is not None:
+                audio_path.unlink(missing_ok=True)
+            self._root.after(0, self._hide_pill)
+        self._hotkey = new_hotkey
+        self._hotkey.start()
 
     # -- hotkey callbacks (run on the pynput listener thread) --
 
@@ -163,38 +202,49 @@ class WisprApp:
         # capture_hotkey() blocks on its own pynput listener until a key is
         # released, so it must not run on the tray/Tk thread -- do it in the
         # background and marshal only the UI updates back via root.after.
+        # The guard stops a second click from starting a rival capture
+        # thread, which would leave two listeners fighting over the swap.
+        if not self._capture_lock.acquire(blocking=False):
+            return
         threading.Thread(target=self._capture_hotkey_flow, daemon=True).start()
 
     def _capture_hotkey_flow(self) -> None:
-        # Stop the normal hold-to-talk listener first so it and the capture
-        # listener below aren't both reacting to the same key events.
-        self._hotkey.stop()
-        self._root.after(0, lambda: self._pill.show_message("Press new hotkey..."))
-
-        combo = capture_hotkey()
-
-        self._root.after(0, self._pill.hide)
-
-        if not combo or combo == "esc":
-            self._root.after(0, lambda: self._pill.flash_message("Cancelled"))
-            self._hotkey.start()
-            return
-
         try:
-            new_hotkey = HoldToTalkHotkey(
-                combo, on_start=self._on_hotkey_down, on_stop=self._on_hotkey_up
-            )
-        except ValueError as exc:
-            print(f"[wispr] failed to set hotkey: {exc}")
-            self._root.after(0, lambda: self._pill.flash_message("Invalid hotkey"))
-            self._hotkey.start()
-            return
+            # Stop the normal listener first so it and the capture listener
+            # below aren't both reacting to the same key events.
+            self._hotkey.stop()
+            self._root.after(0, lambda: self._pill.show_message("Press new hotkey..."))
 
-        self._hotkey = new_hotkey
-        self._hotkey.start()
-        self.settings.hotkey = combo
+            combo = capture_hotkey()
+
+            self._root.after(0, self._pill.hide)
+
+            if not combo or combo == "esc":
+                # Empty combo also covers the capture timing out with no key
+                # pressed -- either way, restore the previous listener.
+                self._root.after(0, lambda: self._pill.flash_message("Cancelled"))
+                self._hotkey.start()
+                return
+
+            try:
+                new_hotkey = self._make_hotkey(combo)
+            except ValueError as exc:
+                print(f"[wispr] failed to set hotkey: {exc}")
+                self._root.after(0, lambda: self._pill.flash_message("Invalid hotkey"))
+                self._hotkey.start()
+                return
+
+            self._swap_hotkey(new_hotkey)
+            self.settings.hotkey = combo
+            save_settings(self.settings)
+            self._root.after(0, lambda: self._pill.flash_message(f"Hotkey: {combo}"))
+        finally:
+            self._capture_lock.release()
+
+    def _on_toggle_tap_mode(self, enabled: bool) -> None:
+        self.settings.hotkey_mode = "toggle" if enabled else "hold"
         save_settings(self.settings)
-        self._root.after(0, lambda: self._pill.flash_message(f"Hotkey: {combo}"))
+        self._swap_hotkey(self._make_hotkey())
 
     def _on_quit(self) -> None:
         self._hotkey.stop()

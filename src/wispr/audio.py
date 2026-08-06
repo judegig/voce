@@ -49,7 +49,32 @@ class Recorder:
         with self._lock:
             self._frames.append(indata.copy())
 
+    @property
+    def is_recording(self) -> bool:
+        """True while an input stream is open (i.e. audio is being captured)."""
+        return self._stream is not None
+
+    def _close_stream(self) -> None:
+        """Closes the current stream, if any. Safe to call when none is open."""
+        if self._stream is None:
+            return
+        try:
+            self._stream.stop()
+            self._stream.close()
+        except Exception as exc:  # noqa: BLE001 - never block on teardown
+            print(f"[wispr] error closing audio stream: {exc}")
+        finally:
+            self._stream = None
+
     def start(self) -> None:
+        # Defensive: if a stream is somehow already open (e.g. the hotkey
+        # listener was hot-swapped mid-recording in toggle mode, so its
+        # "am I recording" state was reset), close it first. Without this
+        # the old stream is silently orphaned but stays ACTIVE -- the mic
+        # keeps capturing after the pill has already been hidden, which is
+        # both a device-handle leak and a privacy problem.
+        self._close_stream()
+
         with self._lock:
             self._frames = []
         self._start_time = time.monotonic()
@@ -90,9 +115,9 @@ class Recorder:
         if self._stream is None:
             return None, 0.0
 
-        self._stream.stop()
-        self._stream.close()
-        self._stream = None
+        # Via _close_stream so a failure mid-teardown still clears
+        # self._stream rather than leaving a half-closed stream behind.
+        self._close_stream()
         duration = time.monotonic() - self._start_time
 
         with self._lock:

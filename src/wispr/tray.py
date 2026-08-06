@@ -27,6 +27,7 @@ class TrayApp:
         on_select_language: Callable[[str], None],
         on_toggle_auto_detect: Callable[[bool], None],
         on_change_hotkey: Callable[[], None],
+        on_toggle_tap_mode: Callable[[bool], None],
         on_quit: Callable[[], None],
         enabled: bool = True,
         launch_at_login: bool = False,
@@ -35,6 +36,7 @@ class TrayApp:
         languages: Optional[dict[str, str]] = None,
         current_language: str = "en",
         auto_detect_language: bool = False,
+        tap_to_toggle: bool = False,
     ):
         self._on_toggle_enabled = on_toggle_enabled
         self._on_toggle_login = on_toggle_login
@@ -42,6 +44,7 @@ class TrayApp:
         self._on_select_language = on_select_language
         self._on_toggle_auto_detect = on_toggle_auto_detect
         self._on_change_hotkey = on_change_hotkey
+        self._on_toggle_tap_mode = on_toggle_tap_mode
         self._on_quit = on_quit
 
         self._enabled = enabled
@@ -53,6 +56,7 @@ class TrayApp:
         self._languages = languages or {}
         self._current_language = current_language
         self._auto_detect_language = auto_detect_language
+        self._tap_to_toggle = tap_to_toggle
 
         self._icon: Optional[pystray.Icon] = None
 
@@ -76,6 +80,11 @@ class TrayApp:
                 checked=lambda item: self._launch_at_login,
             ),
             pystray.MenuItem("Change Hotkey...", self._handle_change_hotkey),
+            pystray.MenuItem(
+                "Tap to Start/Stop (instead of Hold)",
+                self._handle_toggle_tap_mode,
+                checked=lambda item: self._tap_to_toggle,
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit Wispr", self._handle_quit),
         )
@@ -155,6 +164,10 @@ class TrayApp:
 
     def _handle_change_hotkey(self, icon, item) -> None:  # noqa: ANN001
         self._on_change_hotkey()
+
+    def _handle_toggle_tap_mode(self, icon, item) -> None:  # noqa: ANN001
+        self._tap_to_toggle = not self._tap_to_toggle
+        self._on_toggle_tap_mode(self._tap_to_toggle)
 
     def _handle_quit(self, icon, item) -> None:  # noqa: ANN001
         self._on_quit()
