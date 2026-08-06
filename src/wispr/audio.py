@@ -11,6 +11,12 @@ from typing import Optional
 import numpy as np
 import sounddevice as sd
 
+# int16 peak amplitude below which a recording is treated as silence rather
+# than sent to a transcription engine. Room tone/mic noise from an idle
+# input typically peaks well under this; real speech, even quiet, clears it
+# easily. See the comment in Recorder.stop() for why this check exists.
+SILENCE_PEAK_AMPLITUDE = 500
+
 
 def list_input_devices() -> list[dict]:
     """Returns available audio input devices as [{"index": int, "name": str}, ...].
@@ -110,7 +116,8 @@ class Recorder:
         """Stops recording and writes a temp WAV file.
 
         Returns (path_or_none, duration_seconds). path is None if start() was
-        never called or no audio frames were captured.
+        never called, no audio frames were captured, or the recording was
+        near-silent (see SILENCE_PEAK_AMPLITUDE).
         """
         if self._stream is None:
             return None, 0.0
@@ -127,6 +134,16 @@ class Recorder:
             return None, duration
 
         audio = np.concatenate(frames, axis=0)
+
+        if np.abs(audio).max() < SILENCE_PEAK_AMPLITUDE:
+            # Whisper-family models (whisper.cpp and the Groq/OpenAI Whisper
+            # APIs alike) have no "there's no speech here" output -- fed
+            # near-silent audio, they hallucinate a phrase from their
+            # training data instead, almost always "Thank you." (a lot of
+            # that data is YouTube videos ending in "thanks for watching").
+            # Dropping silent recordings here, before any engine ever sees
+            # them, avoids that for all three engines at once.
+            return None, duration
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp_path = Path(tmp.name)
