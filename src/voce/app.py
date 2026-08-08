@@ -20,6 +20,10 @@ from .transcribe import TranscriptionError, transcribe
 from .tray import TrayApp
 
 MIN_RECORDING_SECONDS = 0.3
+# How long to keep capturing after the hotkey is released. See Recorder.stop:
+# releasing on the final syllable rather than after it costs Whisper the last
+# word, and this covers the overlap.
+CAPTURE_TAIL_SECONDS = 0.35
 ENTRY_POINT = Path(__file__).resolve().parent.parent.parent / "run.py"
 
 
@@ -39,6 +43,7 @@ class VoceApp:
         self._recorder = Recorder(
             sample_rate=self.settings.sample_rate,
             device=self.settings.input_device,
+            preroll_seconds=self.settings.preroll_seconds,
         )
         # Enumerated once at startup. Devices don't need to be re-queried
         # on every recording, and the tray submenu is built once from this
@@ -119,13 +124,23 @@ class VoceApp:
         if not self._enabled:
             return
         self._root.after(0, self._hide_pill)
-        audio_path, duration = self._recorder.stop()
+        # Recorder.stop() sleeps for the capture tail, so it can't run here --
+        # this is the pynput listener thread, and blocking it stalls every
+        # key event that follows, including the next hotkey press.
+        threading.Thread(target=self._finish_recording, daemon=True).start()
+
+    # -- capture teardown, on a background thread (see _on_hotkey_up) --
+
+    def _finish_recording(self) -> None:
+        audio_path, duration = self._recorder.stop(
+            tail_seconds=CAPTURE_TAIL_SECONDS
+        )
         if audio_path is None:
             return
         if duration < MIN_RECORDING_SECONDS:
             audio_path.unlink(missing_ok=True)
             return
-        threading.Thread(target=self._process, args=(audio_path,), daemon=True).start()
+        self._process(audio_path)
 
     # -- pill state, always run on the Tk thread via root.after(0, ...) --
 
@@ -248,9 +263,16 @@ class VoceApp:
 
     def _on_quit(self) -> None:
         self._hotkey.stop()
+        # The recorder holds the mic open between recordings for pre-roll;
+        # release it explicitly so the OS stops showing the mic as in use.
+        self._recorder.close()
         self._root.after(0, self._root.quit)
 
     def run(self) -> None:
+        # Start the mic before the first keypress so the pre-roll buffer is
+        # already full when it arrives, and so a bad device selection is
+        # reported at startup rather than silently on the first recording.
+        self._recorder.arm()
         self._hotkey.start()
         self._tray.run_in_background()
         self._root.mainloop()

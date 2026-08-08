@@ -111,6 +111,16 @@ def _transcribe_local(audio_path: Path, settings: Settings) -> TranscriptionResu
         return TranscriptionResult(text=text, language=detected_language)
 
 
+def _vocabulary_prompt(settings: Settings) -> Optional[str]:
+    """Joins settings.transcription.vocabulary_hints into the Groq/OpenAI
+    API's "prompt" hint, or None if the list is empty. Whisper's prompt
+    parameter biases transcription toward the words it contains -- it's a
+    hint, not a strict allowlist, so it helps most with names/jargon the
+    model otherwise mishears rather than guaranteeing exact matches."""
+    hints = settings.transcription.vocabulary_hints
+    return ", ".join(hints) if hints else None
+
+
 def _transcribe_groq(audio_path: Path, settings: Settings) -> TranscriptionResult:
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
@@ -125,6 +135,9 @@ def _transcribe_groq(audio_path: Path, settings: Settings) -> TranscriptionResul
     }
     if not auto_detect:
         data["language"] = settings.transcription.language
+    prompt = _vocabulary_prompt(settings)
+    if prompt:
+        data["prompt"] = prompt
 
     with open(audio_path, "rb") as f:
         response = requests.post(
@@ -157,6 +170,9 @@ def _transcribe_openai(audio_path: Path, settings: Settings) -> TranscriptionRes
     }
     if not auto_detect:
         data["language"] = settings.transcription.language
+    prompt = _vocabulary_prompt(settings)
+    if prompt:
+        data["prompt"] = prompt
 
     with open(audio_path, "rb") as f:
         response = requests.post(

@@ -145,8 +145,9 @@ A tray icon should appear. Hold Right Ctrl, say something, and release.
 |---|---|---|
 | `hotkey` | `"ctrl_r"` | The hotkey. A single [pynput key name](https://pynput.readthedocs.io/en/latest/keyboard.html#pynput.keyboard.Key) (e.g. `"f9"`, `"alt_r"`) or a `+`-joined combo (e.g. `"ctrl+alt"`). Normally set from the tray menu's **Change Hotkey...** item, which applies immediately, no restart needed. Editing this by hand still works too, but does require a restart. |
 | `hotkey_mode` | `"hold"` | `"hold"` (hold the hotkey down to record, release to stop) or `"toggle"` (tap the hotkey to start, tap it again to stop). Normally set from the tray menu's **Tap to Start/Stop** checkbox, which applies immediately, no restart needed. |
-| `sample_rate` | `16000` | Microphone sample rate in Hz. 16kHz is what whisper.cpp expects. |
+| `sample_rate` | `16000` | Preferred microphone sample rate in Hz. Treated as a preference, not a demand: under Windows WASAPI a device only accepts its own native format, so if the selected mic rejects this rate Voce records at a rate the device *does* support and logs which one (some phone-as-mic and USB devices are 48kHz-only). The Groq/OpenAI engines resample server-side, so this costs nothing there. **`"local"` (whisper.cpp) requires 16kHz** — if your mic can't do 16kHz, use a cloud engine or a different mic. |
 | `input_device` | `null` | Microphone/input device index, or `null` for the system default. Normally set from the tray menu's "Input Device" submenu, not edited by hand — takes effect on the next recording, no restart. |
+| `preroll_seconds` | `0.3` | Seconds of audio buffered *before* you press the hotkey, prepended to the recording. People start speaking as they press rather than after, and losing even 150ms off the front wrecks the transcript (measured: "What are you saying" became "body shape"). **This keeps the mic stream open continuously**, so your OS will show the mic as in use whenever Voce is running — nothing is written to disk or sent anywhere outside an active recording, and idle audio lives only in a few hundred milliseconds of continuously-overwritten memory. Set to `0` to close the mic between recordings and accept the clipping. Restart required. |
 | `transcription.engine` | `"local"` | `"local"`, `"groq"`, or `"openai"`. |
 | `transcription.local.binary_path` | `whisper.cpp/build/bin/whisper-cli` | Path to the built whisper.cpp CLI binary. |
 | `transcription.local.model_path` | `whisper.cpp/models/ggml-small.en.bin` | Path to the ggml model file. |
@@ -154,6 +155,7 @@ A tray icon should appear. Hold Right Ctrl, say something, and release.
 | `transcription.openai_model` | `"whisper-1"` | Model name sent to the OpenAI API. |
 | `transcription.language` | `"en"` | Language code used when `auto_detect_language` is `false`. Set from the tray menu's "Language" submenu (24 common languages); any Whisper language code works if you edit this by hand, even ones not in the tray list. Takes effect on the next recording. |
 | `transcription.auto_detect_language` | `false` | When `true`, no fixed language is sent — the engine detects it per recording. Toggled from the tray menu. The detected language is printed to the console and briefly flashed in the pill. |
+| `transcription.vocabulary_hints` | `[]` | List of names, project names, or jargon Whisper tends to mishear (e.g. `["Voce", "Groq", "judegig"]`), sent as a bias hint to the Groq/OpenAI API. It's a hint, not a strict allowlist — it nudges transcription toward these words, it doesn't force them. Only affects the `"groq"` and `"openai"` engines; the local whisper.cpp engine ignores it. Hand-edit only, restart required. |
 | `cleanup.enabled` | `true` | Whether to run the LLM cleanup pass. |
 | `cleanup.model` | `"claude-haiku-4-5"` | Any Claude model ID. Haiku 4.5 is the recommended default — it's fast and cheap, which matters for a latency-sensitive dictation pass. |
 | `launch_at_login` | `false` | Kept in sync automatically when you toggle it from the tray menu. |
@@ -270,6 +272,33 @@ voce/
 - **Pasted text lands in the wrong window.** Make sure the window you want to
   dictate into has focus *before* you hold the hotkey — Voce pastes wherever
   focus already is, it doesn't change focus itself.
+- **It's recording from the wrong microphone** (you picked one in the tray
+  menu but your built-in mic is clearly what's being heard). Check the
+  console for a `[voce] WARNING: could not open input device ...` line —
+  that means the selected device refused to open and Voce fell back to the
+  system default. The usual cause is a sample-rate mismatch: under Windows
+  WASAPI a device only accepts its native format, and some mics (phone-as-mic
+  apps, some USB interfaces) are 48kHz-only while `sample_rate` defaults to
+  16000. Voce now negotiates a supported rate automatically, so this should
+  be rare — if it still happens, the device is genuinely unavailable
+  (unplugged, or its companion app isn't running).
+- **The last word of what I said comes out wrong or missing** (e.g. "what are
+  you saying" pastes as "what are you"). This is releasing the hotkey right
+  on the final syllable rather than a fraction of a second after it — the
+  mic stops before Whisper hears the whole word. Confirmed by A/B testing
+  the same recording trimmed to different tail lengths: cutting 150ms off
+  the end still transcribed correctly, cutting 300ms lost the last word.
+  Fixed as of the `CAPTURE_TAIL_SECONDS` constant in `app.py` (currently
+  0.35s) — `Recorder.stop()` keeps the mic open for that long after you
+  release the hotkey before cutting the clip. If this resurfaces (e.g. on a
+  much slower or much faster talker), raise or lower that constant rather
+  than re-diagnosing from scratch; it isn't a `settings.json` option because
+  it's a fixed recording-pipeline behavior, not a per-user preference. Ruled
+  out during diagnosis, so don't re-check these first: mic startup latency
+  (measured at 6–45ms, too fast to clip anything), the local LLM cleanup
+  pass (only runs if `ANTHROPIC_API_KEY` is set — verify with a print/log
+  before suspecting it), and 16kHz-vs-44.1kHz mic resampling (A/B tested
+  identical on the same phrase).
 
 ---
 

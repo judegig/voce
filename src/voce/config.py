@@ -27,6 +27,10 @@ class TranscriptionConfig:
     openai_model: str = "whisper-1"
     language: str = "en"  # used when auto_detect_language is False
     auto_detect_language: bool = False
+    # Names, project names, or jargon Whisper tends to mishear -- sent as the
+    # Groq/OpenAI API's "prompt" hint to bias transcription toward them. Has
+    # no effect on the local whisper.cpp engine (see transcribe.py).
+    vocabulary_hints: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -41,6 +45,10 @@ class Settings:
     hotkey_mode: str = "hold"  # "hold" (hold to talk) | "toggle" (tap to start/stop)
     sample_rate: int = 16000
     input_device: Optional[int] = None  # None = system default input device
+    # Seconds of audio kept buffered before the hotkey is pressed, so the
+    # first syllable isn't lost when you start speaking as you press. Costs
+    # holding the mic stream open continuously; 0 disables it. See Recorder.
+    preroll_seconds: float = 0.3
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     launch_at_login: bool = False
@@ -73,6 +81,7 @@ def _settings_from_dict(data: dict) -> Settings:
         hotkey_mode=_valid_hotkey_mode(data.get("hotkey_mode", Settings.hotkey_mode)),
         sample_rate=data.get("sample_rate", Settings.sample_rate),
         input_device=data.get("input_device", Settings.input_device),
+        preroll_seconds=data.get("preroll_seconds", Settings.preroll_seconds),
         transcription=TranscriptionConfig(
             engine=transcription_data.get("engine", TranscriptionConfig.engine),
             local=LocalWhisperConfig(
@@ -85,6 +94,7 @@ def _settings_from_dict(data: dict) -> Settings:
             auto_detect_language=transcription_data.get(
                 "auto_detect_language", TranscriptionConfig.auto_detect_language
             ),
+            vocabulary_hints=transcription_data.get("vocabulary_hints", []),
         ),
         cleanup=CleanupConfig(
             enabled=cleanup_data.get("enabled", CleanupConfig.enabled),
