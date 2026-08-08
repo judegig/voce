@@ -268,7 +268,30 @@ voce/
   expected if `ANTHROPIC_API_KEY` isn't set in `.env`, or `cleanup.enabled` is
   `false`. Check the terminal — a failed cleanup call logs a
   `[voce] cleanup failed, pasting raw transcript instead: ...` line rather
-  than crashing.
+  than crashing. Before suspecting cleanup is doing something *wrong*
+  (rather than nothing), confirm it's even running — it's a common
+  misdiagnosis to blame cleanup for a transcription-side bug when no
+  Anthropic key is set at all.
+- **It pastes something unrelated, like "Thank you," when I didn't say
+  anything (or said very little).** This is Whisper hallucinating — the
+  model has no native way to say "there's no speech here," so near-silent
+  audio makes it output a phrase from its training data instead, almost
+  always "Thank you." (a lot of that training data is YouTube videos ending
+  in "thanks for watching"). Fixed by `SILENCE_PEAK_AMPLITUDE` in
+  `audio.py` — recordings whose loudest sample never exceeds that threshold
+  are discarded before any transcription engine sees them. If real quiet
+  speech starts getting silently dropped instead, lower that constant; if
+  hallucinated pastes come back, raise it.
+- **Cleanup answers a dictated question instead of cleaning it up** (e.g.
+  dictating "how are you doing" pastes "Great!" instead of "How are you
+  doing?"). This would happen if the raw transcript is indistinguishable
+  from a real message to the model — a dictated question looks exactly like
+  someone asking Claude a question. Hardened in `cleanup.py`: the transcript
+  is wrapped in `<transcript>...</transcript>` tags with an explicit
+  system-prompt instruction that its contents are dictation being
+  transcribed, never a message addressed to the model. (Note: assistant
+  message prefill was deliberately *not* used to enforce this — it 400s on
+  current Claude models, e.g. Opus 4.6 and later.)
 - **Pasted text lands in the wrong window.** Make sure the window you want to
   dictate into has focus *before* you hold the hotkey — Voce pastes wherever
   focus already is, it doesn't change focus itself.
