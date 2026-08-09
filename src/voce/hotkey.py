@@ -12,6 +12,7 @@ Supports a single key (e.g. "ctrl_r", "f9") or a "+"-separated combo
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
 from typing import Callable, Optional
 
 from pynput import keyboard
@@ -110,16 +111,52 @@ class HoldToTalkHotkey:
         self._active = False
         # "toggle" mode only: whether a recording is logically in progress.
         self._recording = False
+        # See suppressed(): set while the app is sending its own keystrokes.
+        self._suppressed = False
         self._lock = threading.Lock()
         self._listener: Optional[keyboard.Listener] = None
+
+    @contextmanager
+    def suppressed(self):  # noqa: ANN201
+        """Ignores key events for the duration of the block.
+
+        Wrapped around the synthetic Ctrl+V that paste.py sends. A global
+        listener cannot tell an app-generated keystroke from a real one, so
+        without this the paste's own Ctrl press reads as a hotkey press: in
+        "toggle" mode that silently starts a fresh recording the instant the
+        previous transcript is pasted, which then inverts every subsequent
+        tap (the next one "stops" a recording the user never started).
+        """
+        with self._lock:
+            self._suppressed = True
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._suppressed = False
+                # Key events were dropped rather than tracked while
+                # suppressed, so whatever the synthetic keystrokes left
+                # behind -- or a real key genuinely released during the
+                # block -- would otherwise linger as a phantom held key.
+                self._pressed.clear()
+                self._active = False
 
     def _on_press(self, key) -> None:  # noqa: ANN001
         if key is None:
             return
         fire = None
         with self._lock:
+            if self._suppressed:
+                return
             self._pressed.add(key)
-            if not self._active and self._keys.issubset(self._pressed):
+            # `key in self._keys` keeps an unrelated keystroke from
+            # re-triggering the combo if a combo key is somehow still
+            # recorded as held -- only a combo key can complete the combo.
+            if (
+                key in self._keys
+                and not self._active
+                and self._keys.issubset(self._pressed)
+            ):
                 self._active = True
                 if self._mode == "hold":
                     fire = "start"
@@ -136,6 +173,8 @@ class HoldToTalkHotkey:
             return
         fire = False
         with self._lock:
+            if self._suppressed:
+                return
             self._pressed.discard(key)
             if self._active and not self._keys.issubset(self._pressed):
                 self._active = False

@@ -189,7 +189,12 @@ class VoceApp:
             self._root.after(0, lambda: self._maybe_flash_language(language))
 
         cleaned = clean_transcript(result.text, self.settings)
-        paste_text(cleaned)
+        # paste_text sends a real Ctrl+V through the OS, and the global
+        # hotkey listener sees it exactly like a keystroke from the user --
+        # so a Ctrl-based hotkey would trigger off our own paste. See
+        # HoldToTalkHotkey.suppressed() for what that did in toggle mode.
+        with self._hotkey.suppressed():
+            paste_text(cleaned)
 
     # -- tray callbacks (run on the pystray/GUI thread) --
 

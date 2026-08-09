@@ -297,6 +297,15 @@ voce/
 - **Pasted text lands in the wrong window.** Make sure the window you want to
   dictate into has focus *before* you hold the hotkey — Voce pastes wherever
   focus already is, it doesn't change focus itself.
+- **In tap-to-toggle mode it starts recording again by itself right after
+  pasting** — or, the same bug seen from the other end, a tap seems to do
+  nothing and the next tap "stops" a recording you never started. Voce pastes
+  by simulating a real Ctrl+V, and a global keyboard hook can't tell that
+  keystroke apart from a real one, so with a Ctrl-based hotkey the paste read
+  as a tap and flipped the toggle back on. Every tap after that was inverted.
+  Fixed by `HoldToTalkHotkey.suppressed()` in `hotkey.py`, which `app.py`
+  wraps around the paste so the app ignores its own keystrokes. If you add
+  any other place that types on the user's behalf, wrap it the same way.
 - **It's recording from the wrong microphone** (you picked one in the tray
   menu but your built-in mic is clearly what's being heard). Check the
   console for a `[voce] WARNING: could not open input device ...` line —
