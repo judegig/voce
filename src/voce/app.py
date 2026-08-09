@@ -45,9 +45,11 @@ class VoceApp:
             device=self.settings.input_device,
             preroll_seconds=self.settings.preroll_seconds,
         )
-        # Enumerated once at startup. Devices don't need to be re-queried
-        # on every recording, and the tray submenu is built once from this
-        # cached list rather than calling sounddevice on every render.
+        # Just the initial seed for the tray's device submenu -- TrayApp
+        # polls list_input_devices() itself afterward to pick up mics
+        # plugged in or unplugged after startup. Recorder.device (set via
+        # the tray callback) is what's actually used for capture; this list
+        # is display-only.
         self._devices = list_input_devices()
 
         self._root = tk.Tk()

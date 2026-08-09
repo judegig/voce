@@ -31,6 +31,8 @@ cursor.
 The tray icon menu lets you:
 - Toggle the whole thing on/off
 - Pick the **input device** ("System Default" or a specific microphone/interface)
+  — the list refreshes on its own within a couple seconds of plugging in or
+  unplugging a mic, no app restart needed
 - Pick a fixed **language**, or flip on **Auto-detect Language** to let the
   engine guess per recording (the detected language briefly flashes in the
   pill, and is printed to the console)
