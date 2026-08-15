@@ -17,16 +17,34 @@ cursor.
 
 ## How it works
 
+Four stages — **capture → transcribe → clean up → paste** — with the hotkey
+as the trigger:
+
 1. Hold the configured hotkey (default: **Right Ctrl**).
 2. A small "Listening..." pill appears near the top of your screen.
 3. Speak. Release the hotkey when done.
-4. Your speech is transcribed (locally via whisper.cpp, or via the Groq/OpenAI
-   Whisper API — your choice) using whichever input device and language are
-   currently selected in the tray menu.
-5. The raw transcript is passed through an LLM (Claude Haiku 4.5 by default) to
-   strip filler words and fix punctuation/casing.
-6. The cleaned text is pasted at your current cursor position, and your
-   previous clipboard contents are restored afterward.
+4. **Transcribe.** Your speech is transcribed (locally via whisper.cpp, or via
+   the Groq/OpenAI Whisper API — your choice) using whichever input device and
+   language are currently selected in the tray menu.
+5. **Clean up.** The raw transcript is passed through an LLM (Claude Haiku 4.5
+   by default) to strip filler words and fix punctuation/casing.
+6. **Paste.** The cleaned text is pasted at your current cursor position, and
+   your previous clipboard contents are restored afterward.
+
+> ### 🎤 The microphone is always on while Voce is running
+>
+> Pressing the hotkey does **not** switch the mic on — it's already
+> streaming, and the keypress just starts keeping the audio. That's
+> deliberate: people begin speaking *as* they press rather than after, so
+> Voce continuously buffers the last `preroll_seconds` (default 0.3s) and
+> prepends it to the recording. Nothing you'd say in that window is lost.
+>
+> **What this means in practice:** your OS will show the mic as in use the
+> whole time Voce is running. Nothing is written to disk or sent anywhere
+> outside an active recording — idle audio lives only in a few hundred
+> milliseconds of continuously-overwritten memory, and is discarded
+> unheard. Set `preroll_seconds` to `0` to close the mic between recordings
+> and accept the clipped first syllable instead.
 
 The tray icon menu lets you:
 - Toggle the whole thing on/off
@@ -248,6 +266,8 @@ voce/
   run.py                  # entry point: python run.py
   requirements.txt
   LICENSE                 # MIT License
+  README.md               # this file
+  study.md                # how the code works, and why (see below)
   settings.json            # your local config (hotkey, engine, model)
   .env                      # your local API keys (not committed)
   .env.example
@@ -263,6 +283,20 @@ voce/
     tray.py                    # tray icon + menu
     autostart.py                # launch-at-login (Windows/macOS/Linux)
 ```
+
+### `study.md` — the "why" behind the code
+
+[study.md](study.md) is a companion document explaining how Voce actually
+works under the hood: the end-to-end data flow, what each module owns, and
+the reasoning behind the non-obvious design decisions — why the mic stream
+never closes, why transcription shells out to a subprocess instead of
+linking a library, why the transcript is wrapped in tags before it reaches
+the cleanup model.
+
+Most of it is written as **questions and answers**, since the format turns
+out to be a good fit for "why is this like this?" It's the fastest way into
+the codebase if you're reading it for the first time — or returning to it
+after a few months away.
 
 ---
 

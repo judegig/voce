@@ -534,8 +534,8 @@ reproduction, the closest thing to a regression test here.
 
 | # | Question | Tier | Status | Notes |
 |---|---|---|---|---|
-| Q1 | "Tell me about this project" | 🔴 1 | ⬜ Not drilled | **Never practiced despite being guaranteed.** Start here |
-| Q2 | "What happens when you press the hotkey?" | 🔴 1 | ⬜ Not drilled | Understood in pieces; never delivered as one narrative |
+| Q1 | "Tell me about this project" | 🔴 1 | 🟡 Shaky | **2026-08-15: delivered as a recitation of the model answer, so it doesn't count as a pass.** Fact-checking it against the code did find 4 real defects (see the ⚠️ traps under Q1) — all in the *written* answer, now fixed. Re-ask cold, file closed |
+| Q2 | "What happens when you press the hotkey?" | 🔴 1 | ⬜ Asked, unanswered | Asked cold 2026-08-15; answer pending. Understood in pieces; never delivered as one narrative |
 | Q3 | "Hardest bug you've hit" | 🔴 1 | 🟡 Shaky | Content taught 2026-08-09 and understood, but **never said aloud**. Must include the *wrong* first hypothesis — that's the scoring part. Hold-mode follow-up still open |
 | Q4 | "Why is the mic always on?" | 🟠 2 | 🟡 Shaky | Concept ✅ verified. Untested as a *timed* answer; risk is over-explaining the ring buffer |
 | Q5 | "Why clipboard instead of typing?" | 🟠 2 | ⬜ Not drilled | |
