@@ -137,6 +137,14 @@ skip the cleanup pass.
 python run.py
 ```
 
+If you skipped the venv (or your shell's `python` resolves to the Microsoft
+Store stub — you'll see "Python was not found; run without arguments to
+install from the Microsoft Store"), use the `py` launcher instead:
+
+```powershell
+py -3 run.py
+```
+
 A tray icon should appear. Hold Right Ctrl, say something, and release.
 
 ---
@@ -260,6 +268,13 @@ voce/
 
 ## Troubleshooting
 
+- **"Python was not found; run without arguments to install from the
+  Microsoft Store."** Your shell's `python` command resolves to Windows'
+  App Execution Alias stub, not a real interpreter — happens even with
+  Python properly installed if that alias takes priority on `PATH` and no
+  venv is activated. Use the `py` launcher instead: `py -3 run.py` (see
+  [Run it](#5-run-it)). Only the "outside a venv" case is affected —
+  `.venv\Scripts\activate` puts a real `python.exe` on `PATH`.
 - **Nothing happens when I hold the hotkey.** Check the terminal for errors.
   On Linux, confirm you're on X11, not Wayland. On Windows, check that no
   antivirus is silently blocking the keyboard hook.
