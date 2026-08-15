@@ -188,11 +188,12 @@ combined; Tier 3 only comes up if the interviewer opens the source.
 > anywhere in the OS, speak, release — and cleaned-up text appears at your
 > cursor, in whatever app you're in.
 >
-> It's a five-stage pipeline: a global keyboard hook triggers mic capture,
-> the audio goes to Whisper — either a local whisper.cpp binary or the Groq
-> API — the raw transcript goes through Claude Haiku to strip filler words
-> and fix punctuation, then it pastes via the clipboard. It lives in the
-> system tray, no window.
+> It's a four-stage pipeline — capture, transcribe, clean up, paste. A
+> global keyboard hook starts a recording, the audio goes to Whisper —
+> either a local whisper.cpp binary or a cloud API — the raw transcript
+> goes through Claude Haiku to strip filler words and fix punctuation, and
+> the result pastes via the clipboard. It lives in the system tray, no
+> window.
 >
 > The interesting engineering is in the audio capture and the threading —
 > there are three event loops that can't block each other, and the capture
@@ -202,7 +203,18 @@ combined; Tier 3 only comes up if the interviewer opens the source.
 Then **stop**. That last sentence is bait — let them pick the thread to pull.
 
 **Only if probed:** offline-first as a design goal, no accounts/telemetry,
-three swappable engines, live device/language switching from the tray.
+**three** swappable engines (`local`/`groq`/`openai`), a tap-to-toggle
+alternative to hold-to-talk, live device/language switching from the tray.
+
+⚠️ **Traps in this answer, all found by fact-checking a delivery:**
+- Don't state a stage count you can't enumerate on demand. It's **four**;
+  the hotkey is the trigger, not a stage.
+- Don't say the hook "triggers mic capture" — the mic is *already*
+  streaming. That contradicts your own Q4 answer two minutes later.
+- Don't say "either local or Groq" — that asserts two engines. There are
+  three.
+- "For Windows" is the target, but it's cross-platform Python that also
+  runs on Linux/X11. Don't claim a native Windows app.
 
 ---
 
