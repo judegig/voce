@@ -35,9 +35,15 @@ reserve for a follow-up, not spent up front.
 > any API call — silently, by design, so dictation survives with no cloud
 > dependency. The pasted text is therefore the **raw** Whisper transcript.
 >
-> It doesn't look broken, which is the trap: Whisper punctuates and
-> capitalizes on its own, so output reads clean. What's missing is filler
-> removal — "um" and "uh" survive into the paste.
+> **It doesn't look broken, and that's the point.** `whisper-large-v3`
+> already punctuates, capitalizes, *and* strips most filler words by itself
+> — it was trained largely on subtitles, which omit disfluencies. So the
+> output reads clean and the missing stage is genuinely hard to notice.
+> (Confirmed by observation, then verified: feeding `clean_transcript` a
+> filler-stuffed string returns it byte-identical.)
+>
+> Don't claim "um and uh survive into the paste" — they mostly don't.
+> Whisper handles them.
 
 Voce is a system-wide, hotkey-driven dictation tool. Hold a hotkey
 anywhere on the OS, speak, release. It transcribes the audio (locally via
@@ -381,26 +387,33 @@ than raising.
 
 **Say this** (~30s):
 
-> Whisper transcribes what you *said*, including "um," false starts, and
-> repeated words. Correct as transcription, wrong as dictation — you want
-> what you *meant* to write. So a Claude Haiku pass strips the fillers.
->
-> Whisper already punctuates and capitalizes on its own — it was trained on
-> subtitles, so it emits properly-cased sentences natively. The cleanup pass
-> tidies punctuation, but the disfluencies are the part it actually earns.
->
-> Haiku specifically because this is latency-sensitive — it sits directly
+> The idea is that Whisper transcribes what you *said*, and dictation wants
+> what you *meant to write* — so a Claude Haiku pass strips fillers and
+> false starts. Haiku specifically because it's latency-sensitive, sitting
 > between the user finishing a sentence and text appearing.
 >
-> And it's strictly optional: no API key, or cleanup disabled, and the raw
-> transcript pastes instead. A cleanup failure never breaks dictation.
+> Worth being honest though: it earns less than I expected.
+> `whisper-large-v3` already punctuates, capitalizes, *and* drops most
+> fillers on its own — it was trained on subtitles, which don't transcribe
+> disfluencies. So against a modern Whisper the pass mostly buys
+> *consistency* rather than transformation: guaranteed behavior instead of
+> incidental, plus false starts and self-corrections, which Whisper does
+> transcribe faithfully.
+>
+> And it's strictly optional — no API key and the raw transcript pastes
+> instead. My own install runs Groq-only with no Anthropic key, and
+> dictation works fine. That was the requirement.
 
-💡 **Say the optionality from experience, it's stronger:** *"my own install
-is Groq-only with no Anthropic key, and dictation still works fine — that
-was the requirement."* Lived evidence beats a described feature. It also
-pre-empts the trap of over-claiming what cleanup does: if you say it "fixes
-punctuation" and they know Whisper already does that, the answer looks
-under-examined.
+💡 **Why this version scores better than "it strips filler words":** it
+shows you measured your own assumption instead of trusting the design doc.
+Claiming the pass fixes punctuation and fillers is the under-examined
+answer — an interviewer who knows Whisper's behavior will catch it, and
+"I found the newer model already did most of it" is a much stronger place
+to be caught.
+
+⚠️ **This was learned the hard way, 2026-08-15.** The written answer here
+claimed Whisper leaves fillers in and cleanup removes them. Real usage
+showed the opposite. Don't rehearse the old version.
 
 **Only if probed** — the **prompt injection** answer lives here, and it's strong:
 

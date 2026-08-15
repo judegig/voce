@@ -31,9 +31,12 @@ as the trigger:
    and fix punctuation/casing. **Without `ANTHROPIC_API_KEY` set, this stage
    is skipped silently** and the raw transcript goes straight through — see
    [step 4 of Installation](#4-set-up-cleanup-optional-but-recommended).
-   Whisper already punctuates and capitalizes on its own, so the visible
-   difference is mostly filler words ("um", "uh", false starts) surviving
-   into the pasted text.
+   In practice the difference is smaller than you'd expect: `whisper-large-v3`
+   already punctuates, capitalizes, and drops most filler words on its own
+   (it was trained largely on subtitles, which omit disfluencies). What the
+   cleanup pass adds on top is *consistency* — Whisper's filler removal is
+   incidental, not guaranteed — plus tidying of false starts and mid-sentence
+   self-corrections, which Whisper does transcribe faithfully.
 6. **Paste.** The cleaned text is pasted at your current cursor position, and
    your previous clipboard contents are restored afterward.
 
