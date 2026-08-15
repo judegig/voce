@@ -19,6 +19,26 @@ reserve for a follow-up, not spent up front.
 
 ## 1. The codebase in one page
 
+> ### ⚙️ What's actually running on this machine (as of 2026-08-15)
+>
+> The code supports four stages. **This install runs three** — worth
+> knowing before you describe it to anyone.
+>
+> | Stage | Status here |
+> |---|---|
+> | Capture | ✅ |
+> | Transcribe — Groq `whisper-large-v3` | ✅ `GROQ_API_KEY` set |
+> | Clean up — Claude Haiku | ❌ **skipped**, `ANTHROPIC_API_KEY` is empty |
+> | Paste | ✅ |
+>
+> Cleanup bails at [cleanup.py:62-64](src/voce/cleanup.py#L62-L64) before
+> any API call — silently, by design, so dictation survives with no cloud
+> dependency. The pasted text is therefore the **raw** Whisper transcript.
+>
+> It doesn't look broken, which is the trap: Whisper punctuates and
+> capitalizes on its own, so output reads clean. What's missing is filler
+> removal — "um" and "uh" survive into the paste.
+
 Voce is a system-wide, hotkey-driven dictation tool. Hold a hotkey
 anywhere on the OS, speak, release. It transcribes the audio (locally via
 whisper.cpp, or via the Groq/OpenAI Whisper API), runs the raw transcript
@@ -363,14 +383,24 @@ than raising.
 
 > Whisper transcribes what you *said*, including "um," false starts, and
 > repeated words. Correct as transcription, wrong as dictation — you want
-> what you *meant* to write. So a Claude Haiku pass strips fillers and
-> fixes punctuation and casing.
+> what you *meant* to write. So a Claude Haiku pass strips the fillers.
+>
+> Whisper already punctuates and capitalizes on its own — it was trained on
+> subtitles, so it emits properly-cased sentences natively. The cleanup pass
+> tidies punctuation, but the disfluencies are the part it actually earns.
 >
 > Haiku specifically because this is latency-sensitive — it sits directly
 > between the user finishing a sentence and text appearing.
 >
 > And it's strictly optional: no API key, or cleanup disabled, and the raw
 > transcript pastes instead. A cleanup failure never breaks dictation.
+
+💡 **Say the optionality from experience, it's stronger:** *"my own install
+is Groq-only with no Anthropic key, and dictation still works fine — that
+was the requirement."* Lived evidence beats a described feature. It also
+pre-empts the trap of over-claiming what cleanup does: if you say it "fixes
+punctuation" and they know Whisper already does that, the answer looks
+under-examined.
 
 **Only if probed** — the **prompt injection** answer lives here, and it's strong:
 

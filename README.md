@@ -26,8 +26,14 @@ as the trigger:
 4. **Transcribe.** Your speech is transcribed (locally via whisper.cpp, or via
    the Groq/OpenAI Whisper API — your choice) using whichever input device and
    language are currently selected in the tray menu.
-5. **Clean up.** The raw transcript is passed through an LLM (Claude Haiku 4.5
-   by default) to strip filler words and fix punctuation/casing.
+5. **Clean up** *(optional — needs an Anthropic key)*. The raw transcript is
+   passed through an LLM (Claude Haiku 4.5 by default) to strip filler words
+   and fix punctuation/casing. **Without `ANTHROPIC_API_KEY` set, this stage
+   is skipped silently** and the raw transcript goes straight through — see
+   [step 4 of Installation](#4-set-up-cleanup-optional-but-recommended).
+   Whisper already punctuates and capitalizes on its own, so the visible
+   difference is mostly filler words ("um", "uh", false starts) surviving
+   into the pasted text.
 6. **Paste.** The cleaned text is pasted at your current cursor position, and
    your previous clipboard contents are restored afterward.
 
