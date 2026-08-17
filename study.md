@@ -78,7 +78,7 @@ three coincidences.
 | File | Owns |
 |---|---|
 | [app.py](src/voce/app.py) | Wires everything together; owns the Tk mainloop |
-| [audio.py](src/voce/audio.py) | Mic capture, ring-buffer preroll, WAV writing |
+| [audio.py](src/voce/audio.py) | Mic capture, ring-buffer preroll, silence gate, WAV writing |
 | [hotkey.py](src/voce/hotkey.py) | Global hold/toggle listener + interactive capture |
 | [transcribe.py](src/voce/transcribe.py) | Local subprocess + two HTTP speech-to-text backends |
 | [cleanup.py](src/voce/cleanup.py) | LLM post-processing of the raw transcript |
@@ -194,7 +194,7 @@ one confidently is worse than admitting you don't remember.
 | Sounds right | Actually |
 |---|---|
 | Audio buffered as float32 | `sounddevice` records **`int16`** PCM; float conversion happens inside whisper.cpp, never in Python |
-| whisper.cpp loaded as a DLL via `ctypes` FFI | [`_transcribe_local`](src/voce/transcribe.py#L43) shells out to a **`whisper-cli` binary via `subprocess.run`** — temp WAV in, temp `.txt` out |
+| whisper.cpp loaded as a DLL via `ctypes` FFI | [`_transcribe_local`](src/voce/transcribe.py#L85) shells out to a **`whisper-cli` binary via `subprocess.run`** — temp WAV in, temp `.txt` out |
 | Text injection via `SendInput` + active-window detection | [paste.py](src/voce/paste.py) uses **clipboard + simulated Ctrl+V** via `pynput`; no window detection at all |
 
 ---
@@ -263,7 +263,7 @@ alternative to hold-to-talk, live device/language switching from the tray.
 > run cleanup, paste, delete the temp file.
 
 **Only if probed:** exact drop conditions
-([app.py:136-145](src/voce/app.py#L136-L145)); transcription failure
+([app.py:140-149](src/voce/app.py#L140-L149)); transcription failure
 aborts just that utterance; the paste is wrapped in `suppressed()` (→ Q3);
 the `_maybe_flash_language` stale-result guard.
 
@@ -377,7 +377,7 @@ OS needs a moment to register the new clipboard; a native
 > utterance — real, but small next to inference time.
 
 **Only if probed:** parsing auto-detected language out of stderr with a
-regex ([transcribe.py:108](src/voce/transcribe.py#L108)), and that this is
+regex ([transcribe.py:150](src/voce/transcribe.py#L150)), and that this is
 explicitly *not* a stable CLI contract — it falls back to `"auto"` rather
 than raising.
 
@@ -449,9 +449,9 @@ Claude models.
 > slower and the sound card's buffer overruns.
 
 **Only if probed:** `self._lock` guarding `_frames`/`_preroll`
-([audio.py:116](src/voce/audio.py#L116)); `_recording` needs no lock
+([audio.py:158](src/voce/audio.py#L158)); `_recording` needs no lock
 because it's only touched from Tk-dispatched callbacks
-([app.py:34-39](src/voce/app.py#L34-L39)); `_capture_lock` as a
+([app.py:38-43](src/voce/app.py#L38-L43)); `_capture_lock` as a
 non-blocking guard against two rival hotkey-capture threads.
 
 ---
@@ -478,13 +478,15 @@ If you find yourself explaining int16 unprompted, you've lost the thread.
 
 | Question | Say this (1-2 sentences) |
 |---|---|
-| **Why `indata.copy()`?** | PortAudio reuses its buffer across callbacks. Without the copy every frame points at the same memory, and the recording comes out as the last 10-30ms block repeated. ([audio.py:118](src/voce/audio.py#L118)) |
+| **Why `indata.copy()`?** | PortAudio reuses its buffer across callbacks. Without the copy every frame points at the same memory, and the recording comes out as the last 10-30ms block repeated. ([audio.py:160](src/voce/audio.py#L160)) |
 | **Why `deque`, not a list?** | `popleft()` is O(1) on a deque, O(n) on a list. It runs on the audio callback thread — if that's slow, the sound card's buffer overruns and samples are lost permanently. |
-| **What's the silence check?** | Whisper has no "no speech here" output — fed near-silence it hallucinates, almost always "Thank you." So recordings whose peak int16 amplitude never clears 500 get dropped before any engine sees them. ([audio.py:306](src/voce/audio.py#L306)) |
-| **Why `np.abs()` first?** | Samples swing both directions; −30,000 is exactly as loud as +30,000. Without `abs()`, `.max()` only sees positive peaks. |
+| **What's the silence check?** | Whisper has no "no speech here" output — fed near-silence it hallucinates, almost always "Thank you." So a recording is split into 30ms frames, the ones whose RMS clears a speech floor are totalled, and under 0.25s of that it's dropped before any engine sees it. ([audio.py:76-93](src/voce/audio.py#L76-L93), gate at [353](src/voce/audio.py#L353)) |
+| **Why RMS over frames, not peak?** | The good version of this question. Peak was the first implementation and it *shipped the bug it existed to prevent*: peak is one sample, so a single transient clears it — and every recording ends with one, because releasing the hotkey is a key click into the mic. Speech isn't a spike, it's sustained energy, so measure how long it lasts. |
+| **Why squash to float32 first?** | `frames * frames` on int16 overflows silently and the wrapped values read as *near-zero* energy — so the loudest frames would count as the quietest. Failure mode is inverted, not just wrong. |
+| **Isn't a phrase blocklist a hack?** | It's the backstop, not the mechanism — the energy gate does the work. It only fires when the transcript is *entirely* a known stock phrase **and** the audio was already marginal, so a real "Thank you." survives. The honest tradeoff: it can't tell a hallucinated one from a genuine one on truly ambiguous audio, so the window is kept narrow enough to hold a single short word. |
 | **Why int16?** | It's what `sounddevice` gives you and what a WAV stores — range −32,768 to 32,767. Normalization to float32 happens *inside* whisper.cpp; Python never sees a float sample. |
 | **Why 16kHz?** | Whisper's encoder was trained on a log-mel spectrogram with a fixed FFT window tuned for 16,000 samples/sec — baked into the weights. But the rule applies at the *model* boundary, not the mic: WASAPI only accepts a device's native rate, so the recorder probes for one it'll take and the engine resamples. |
-| **Why does the WAV use `_active_rate`?** | The stream may not have gotten the rate that was asked for. Tagging 48kHz audio as 16kHz makes it play — and transcribe — as slow, deep gibberish. ([audio.py:326](src/voce/audio.py#L326)) |
+| **Why does the WAV use `_active_rate`?** | The stream may not have gotten the rate that was asked for. Tagging 48kHz audio as 16kHz makes it play — and transcribe — as slow, deep gibberish. ([audio.py:373](src/voce/audio.py#L373)) |
 | **Why filter to WASAPI when listing devices?** | Windows surfaces the same mic once per host API — MME, DirectSound, WASAPI, WDM-KS — so one mic appears 3-4×. Filtering to one host API is the correct fix; a name-dedup heuristic isn't. |
 | **What's the capture tail?** | Mirror image of pre-roll. People release the key on the final syllable, not after it — 300ms off the end turned "What are you saying" into "What are you?" So `stop()` keeps capturing 0.35s past the release. |
 
@@ -519,8 +521,10 @@ If you find yourself explaining int16 unprompted, you've lost the thread.
 >
 > If I added tests: the pure logic is very testable — the hotkey state
 > machine takes synthetic key events, the ring buffer takes fake arrays,
-> `_strip_tag` is a pure function. I'd feed `Recorder` prerecorded frames
-> instead of a live device and assert on the silence threshold. The
+> `_strip_tag` and `is_silence_hallucination` are pure functions. The
+> silence gate is the clearest case — `_voiced_seconds` takes a plain
+> array, so synthetic room tone, room tone plus a key click, and real
+> speech each pin down one row of a truth table without a mic. The
 > genuinely hard parts are the OS-level pieces — the global hook and the
 > paste — which is exactly where the worst bug lived.
 
@@ -611,7 +615,7 @@ reproduction, the closest thing to a regression test here.
    — how many samples reach whisper.cpp? *Low-tier topic, but it's the
    isolated drill for never landing the final number, which damages
    answers at every tier.*
-3. **(Tier 3)** [audio.py:126-130](src/voce/audio.py#L126-L130) uses
+3. **(Tier 3)** [audio.py:168-172](src/voce/audio.py#L168-L172) uses
    `_active_rate`, not `sample_rate`. What breaks if it used
    `sample_rate`, and on which machines would you notice?
 
@@ -633,7 +637,7 @@ volunteer.
 | `samplerate` 16000 → 8000 | ✅ Silence check still fine | Rate changes **how many** numbers, not their **size**. 30fps vs 60fps doesn't change how bright the room is. Frame length is derived from the live rate, so frames stay 30ms either way |
 | `SPEECH_RMS_THRESHOLD` 180 → 1800 | Normal speech discarded. User sees **nothing** — no text, no error ([app.py](src/voce/app.py) bare-returns) | Speech *frame RMS* runs several hundred to a few thousand, so 1,800 cuts ordinary talking, not just quiet talkers |
 | Voiced-frame test → peak test | 🐛 **The original bug returns.** Silence + a key click transcribes as "Thank you." | Peak is decided by a single sample, so one transient clears it — and releasing the hotkey *is* a click into the mic. Speech is sustained energy; measure duration, not the loudest instant |
-| `preroll_seconds` 0.3 → 3.0 | 48,000 samples (96 KB) buffered. Pre-press audio pollutes the transcript **and** adds 3 seconds to transcribe every utterance | Latency is the real reason not to set it high "to be safe." Previous dictation's tail can't leak in — `stop()` clears `_preroll` ([audio.py:290-294](src/voce/audio.py#L290-L294)) |
+| `preroll_seconds` 0.3 → 3.0 | 48,000 samples (96 KB) buffered. Pre-press audio pollutes the transcript **and** adds 3 seconds to transcribe every utterance | Latency is the real reason not to set it high "to be safe." Previous dictation's tail can't leak in — `stop()` clears `_preroll` ([audio.py:335-341](src/voce/audio.py#L335-L341)) |
 
 **The int16 range, since it anchors three of the above:** −32,768 to
 +32,767. Silence ≈ 0, normal speech peaks ≈ 3,000–10,000, a shout ≈
@@ -653,5 +657,5 @@ c6 → 5000 → drop oldest → 4000     ... forever
 ```
 
 New in the back, old falls out the front. Never grows. On keypress,
-`_frames = list(_preroll)` ([audio.py:250-259](src/voce/audio.py#L250-L259))
+`_frames = list(_preroll)` ([audio.py:292-301](src/voce/audio.py#L292-L301))
 — the recording starts *already holding* audio from before the press.

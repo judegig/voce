@@ -21,8 +21,12 @@ Four stages — **capture → transcribe → clean up → paste** — with the h
 as the trigger:
 
 1. Hold the configured hotkey (default: **Right Ctrl**).
-2. A small "Listening..." pill appears near the top of your screen.
-3. Speak. Release the hotkey when done.
+2. A small "Listening..." pill appears near the top of your screen, its dot
+   breathing between dim and bright red so you can tell at a glance that
+   capture is live and not frozen.
+3. Speak. Release the hotkey when done. Say nothing and nothing is pasted —
+   near-silent recordings are discarded rather than transcribed (see
+   [Troubleshooting](#troubleshooting) for why that check has to exist).
 4. **Transcribe.** Your speech is transcribed (locally via whisper.cpp, or via
    the Groq/OpenAI Whisper API — your choice) using whichever input device and
    language are currently selected in the tray menu.
