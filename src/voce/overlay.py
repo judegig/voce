@@ -5,7 +5,15 @@ threads should schedule show()/hide() via `root.after(0, ...)`.
 """
 from __future__ import annotations
 
+import math
+import time
 import tkinter as tk
+
+# Breathing pulse color boundaries (dark red to bright red)
+_PULSE_DIM_RGB = (90, 30, 27)
+_PULSE_BRIGHT_RGB = (255, 69, 58)
+_PULSE_PERIOD_SECONDS = 1.8
+_PULSE_INTERVAL_MS = 33
 
 
 class RecordingPill:
@@ -35,8 +43,9 @@ class RecordingPill:
         )
 
         self._window.withdraw()
-        self._blink_job: str | None = None
+        self._pulse_job: str | None = None
         self._flash_job: str | None = None
+        self._pulse_start_time: float = 0.0
 
     def show(self) -> None:
         # A flash_message() from a *previous* utterance may still have a
@@ -46,32 +55,46 @@ class RecordingPill:
         if self._flash_job is not None:
             self._window.after_cancel(self._flash_job)
             self._flash_job = None
+        if self._pulse_job is not None:
+            self._window.after_cancel(self._pulse_job)
+            self._pulse_job = None
+
         self._canvas.itemconfig(self._label, text="Listening...")
         self._canvas.itemconfig(self._dot, fill="#ff453a")
+        self._pulse_start_time = time.monotonic()
 
         self._window.deiconify()
         self._window.lift()
-        self._blink()
+        self._pulse()
 
     def hide(self) -> None:
-        if self._blink_job is not None:
-            self._window.after_cancel(self._blink_job)
-            self._blink_job = None
+        if self._pulse_job is not None:
+            self._window.after_cancel(self._pulse_job)
+            self._pulse_job = None
+        if self._flash_job is not None:
+            self._window.after_cancel(self._flash_job)
+            self._flash_job = None
         self._window.withdraw()
 
-    def _blink(self) -> None:
-        current = self._canvas.itemcget(self._dot, "fill")
-        next_color = "#3a1e1e" if current == "#ff453a" else "#ff453a"
-        self._canvas.itemconfig(self._dot, fill=next_color)
-        self._blink_job = self._window.after(500, self._blink)
+    def _pulse(self) -> None:
+        elapsed = time.monotonic() - self._pulse_start_time
+        phase = (elapsed * 2.0 * math.pi) / _PULSE_PERIOD_SECONDS
+        # Cosine factor smoothly transitions 1.0 -> 0.0 -> 1.0 starting at full brightness
+        factor = (math.cos(phase) + 1.0) / 2.0
+
+        r = int(_PULSE_DIM_RGB[0] + (_PULSE_BRIGHT_RGB[0] - _PULSE_DIM_RGB[0]) * factor)
+        g = int(_PULSE_DIM_RGB[1] + (_PULSE_BRIGHT_RGB[1] - _PULSE_DIM_RGB[1]) * factor)
+        b = int(_PULSE_DIM_RGB[2] + (_PULSE_BRIGHT_RGB[2] - _PULSE_DIM_RGB[2]) * factor)
+        self._canvas.itemconfig(self._dot, fill=f"#{r:02x}{g:02x}{b:02x}")
+        self._pulse_job = self._window.after(_PULSE_INTERVAL_MS, self._pulse)
 
     def show_message(self, text: str) -> None:
-        """Shows `text` persistently (no blink, no auto-hide timer) until
+        """Shows `text` persistently (no pulse, no auto-hide timer) until
         hide() is called. Used for the hotkey-capture prompt, where the
         duration isn't known up front."""
-        if self._blink_job is not None:
-            self._window.after_cancel(self._blink_job)
-            self._blink_job = None
+        if self._pulse_job is not None:
+            self._window.after_cancel(self._pulse_job)
+            self._pulse_job = None
         if self._flash_job is not None:
             self._window.after_cancel(self._flash_job)
             self._flash_job = None
@@ -83,11 +106,12 @@ class RecordingPill:
     def flash_message(self, text: str, duration_ms: int = 1500) -> None:
         """Briefly shows `text` (e.g. a detected language code) in place of
         the listening indicator, then hides the pill again."""
-        if self._blink_job is not None:
-            self._window.after_cancel(self._blink_job)
-            self._blink_job = None
+        if self._pulse_job is not None:
+            self._window.after_cancel(self._pulse_job)
+            self._pulse_job = None
         if self._flash_job is not None:
             self._window.after_cancel(self._flash_job)
+            self._flash_job = None
 
         self._canvas.itemconfig(self._dot, fill="#3a86ff")
         self._canvas.itemconfig(self._label, text=text)
@@ -97,5 +121,9 @@ class RecordingPill:
 
     def _reset_and_hide(self) -> None:
         self._flash_job = None
+        if self._pulse_job is not None:
+            self._window.after_cancel(self._pulse_job)
+            self._pulse_job = None
         self._canvas.itemconfig(self._label, text="Listening...")
+        self._canvas.itemconfig(self._dot, fill="#ff453a")
         self._window.withdraw()
