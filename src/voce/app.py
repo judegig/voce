@@ -9,14 +9,18 @@ from pathlib import Path
 from typing import Optional
 
 from . import autostart
-from .audio import Recorder, list_input_devices
+from .audio import MARGINAL_SPEECH_SECONDS, Recorder, list_input_devices
 from .cleanup import clean_transcript
 from .config import Settings, load_settings, save_settings
 from .hotkey import HoldToTalkHotkey, capture_hotkey
 from .languages import LANGUAGES
 from .overlay import RecordingPill
 from .paste import paste_text
-from .transcribe import TranscriptionError, transcribe
+from .transcribe import (
+    TranscriptionError,
+    is_silence_hallucination,
+    transcribe,
+)
 from .tray import TrayApp
 
 MIN_RECORDING_SECONDS = 0.3
@@ -107,7 +111,7 @@ class VoceApp:
         pill already hidden, and there'd be no tap that stops it."""
         self._hotkey.stop()
         if self._recorder.is_recording:
-            audio_path, _ = self._recorder.stop()
+            audio_path, _, _ = self._recorder.stop()
             if audio_path is not None:
                 audio_path.unlink(missing_ok=True)
             self._root.after(0, self._hide_pill)
@@ -134,7 +138,7 @@ class VoceApp:
     # -- capture teardown, on a background thread (see _on_hotkey_up) --
 
     def _finish_recording(self) -> None:
-        audio_path, duration = self._recorder.stop(
+        audio_path, duration, voiced = self._recorder.stop(
             tail_seconds=CAPTURE_TAIL_SECONDS
         )
         if audio_path is None:
@@ -142,7 +146,7 @@ class VoceApp:
         if duration < MIN_RECORDING_SECONDS:
             audio_path.unlink(missing_ok=True)
             return
-        self._process(audio_path)
+        self._process(audio_path, voiced)
 
     # -- pill state, always run on the Tk thread via root.after(0, ...) --
 
@@ -167,7 +171,7 @@ class VoceApp:
 
     # -- background worker: transcribe -> clean -> paste --
 
-    def _process(self, audio_path: Path) -> None:
+    def _process(self, audio_path: Path, voiced_seconds: float) -> None:
         try:
             result = transcribe(audio_path, self.settings)
         except TranscriptionError as exc:
@@ -177,6 +181,21 @@ class VoceApp:
             audio_path.unlink(missing_ok=True)
 
         if not result.text.strip():
+            return
+
+        # Second line of defence behind the energy gate in Recorder.stop():
+        # audio too sparse to be trusted, transcribed into one of Whisper's
+        # stock silence phrases, is the model filling a void rather than the
+        # user talking. Pasting that into whatever they had focused is worse
+        # than pasting nothing.
+        if is_silence_hallucination(
+            result.text,
+            marginal_audio=voiced_seconds < MARGINAL_SPEECH_SECONDS,
+        ):
+            print(
+                f"[voce] discarded likely silence hallucination "
+                f"{result.text.strip()!r} ({voiced_seconds:.2f}s voiced)"
+            )
             return
 
         # Only surface the detected language when auto-detect is actually

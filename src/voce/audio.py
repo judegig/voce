@@ -13,11 +13,32 @@ from typing import Optional
 import numpy as np
 import sounddevice as sd
 
-# int16 peak amplitude below which a recording is treated as silence rather
-# than sent to a transcription engine. Room tone/mic noise from an idle
-# input typically peaks well under this; real speech, even quiet, clears it
-# easily. See the comment in Recorder.stop() for why this check exists.
-SILENCE_PEAK_AMPLITUDE = 500
+# Speech detection thresholds. See _voiced_seconds() and the comment in
+# Recorder.stop() for why a recording has to clear these before any
+# transcription engine sees it.
+#
+# A *peak* amplitude test used to stand in for this and let the exact bug it
+# existed to prevent through anyway: peak is decided by a single sample, so
+# one transient in an otherwise silent recording clears it -- and every
+# recording ends with a transient, because releasing the hotkey is itself a
+# key click into the mic. Mouse clicks, desk bumps and breaths did it too.
+# Speech is not a spike, it is sustained energy, so measure that instead.
+_FRAME_SECONDS = 0.03
+# int16 RMS a 30ms frame must reach to count as voiced. Idle room tone sits
+# well under this (tens); even quiet speech runs several hundred.
+SPEECH_RMS_THRESHOLD = 180
+# Total voiced audio a recording needs before it's worth transcribing. Below
+# this it's treated as silence and dropped.
+MIN_SPEECH_SECONDS = 0.25
+# Voiced audio below this is real but too sparse to trust on its own -- a
+# transcript from it is checked against Whisper's known silence
+# hallucinations. See transcribe.is_silence_hallucination().
+#
+# Deliberately just above MIN_SPEECH_SECONDS: the window is narrow enough to
+# hold only a single short word, which is all a hallucination ever is. Wider
+# and it starts eating real dictation -- a briskly spoken "Thank you." lands
+# around 0.42s of voiced audio and has to survive.
+MARGINAL_SPEECH_SECONDS = 0.4
 
 
 def list_input_devices() -> list[dict]:
@@ -50,6 +71,27 @@ def list_input_devices() -> list[dict]:
             continue
         devices.append({"index": index, "name": info["name"]})
     return devices
+
+
+def _voiced_seconds(audio: np.ndarray, sample_rate: float) -> float:
+    """Returns how much of `audio` carries speech-level energy, in seconds.
+
+    Splits the recording into short frames and totals the ones whose RMS
+    clears SPEECH_RMS_THRESHOLD. Unlike a peak test this ignores isolated
+    transients -- a key click is one or two frames, whereas even a single
+    spoken word is dozens -- so the two are told apart by how long the
+    energy lasts rather than by how loud its loudest instant was.
+    """
+    mono = audio.mean(axis=1) if audio.ndim > 1 else audio
+    frame_len = max(1, int(sample_rate * _FRAME_SECONDS))
+    usable = len(mono) - (len(mono) % frame_len)
+    if usable < frame_len:
+        return 0.0
+    # float32 before squaring: int16 RMS arithmetic overflows silently, and
+    # the wrapped values read as near-zero energy.
+    frames = mono[:usable].astype(np.float32).reshape(-1, frame_len)
+    rms = np.sqrt(np.mean(frames * frames, axis=1))
+    return float(np.count_nonzero(rms >= SPEECH_RMS_THRESHOLD) * _FRAME_SECONDS)
 
 
 class Recorder:
@@ -258,7 +300,9 @@ class Recorder:
             self._capturing = True
         self._start_time = time.monotonic()
 
-    def stop(self, tail_seconds: float = 0.0) -> tuple[Optional[Path], float]:
+    def stop(
+        self, tail_seconds: float = 0.0
+    ) -> tuple[Optional[Path], float, float]:
         """Stops recording and writes a temp WAV file.
 
         Keeps capturing for `tail_seconds` before closing the stream. People
@@ -269,12 +313,14 @@ class Recorder:
         The tail buys back that overlap. Callers must not run this on the
         hotkey listener thread -- it sleeps.
 
-        Returns (path_or_none, duration_seconds). path is None if start() was
-        never called, no audio frames were captured, or the recording was
-        near-silent (see SILENCE_PEAK_AMPLITUDE).
+        Returns (path_or_none, duration_seconds, voiced_seconds), where
+        duration is how long the hotkey was held and voiced is how much of
+        that carried speech-level energy. path is None if start() was never
+        called, no audio frames were captured, or the recording held less
+        than MIN_SPEECH_SECONDS of speech.
         """
         if not self._capturing:
-            return None, 0.0
+            return None, 0.0, 0.0
 
         # Measured before the tail sleep so it reflects how long the hotkey
         # was actually held. Counting the tail would push every accidental
@@ -299,11 +345,12 @@ class Recorder:
             self._close_stream()
 
         if not frames:
-            return None, duration
+            return None, duration, 0.0
 
         audio = np.concatenate(frames, axis=0)
+        voiced = _voiced_seconds(audio, self._active_rate)
 
-        if np.abs(audio).max() < SILENCE_PEAK_AMPLITUDE:
+        if voiced < MIN_SPEECH_SECONDS:
             # Whisper-family models (whisper.cpp and the Groq/OpenAI Whisper
             # APIs alike) have no "there's no speech here" output -- fed
             # near-silent audio, they hallucinate a phrase from their
@@ -311,7 +358,7 @@ class Recorder:
             # that data is YouTube videos ending in "thanks for watching").
             # Dropping silent recordings here, before any engine ever sees
             # them, avoids that for all three engines at once.
-            return None, duration
+            return None, duration, voiced
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tmp_path = Path(tmp.name)
@@ -326,4 +373,4 @@ class Recorder:
             wf.setframerate(int(self._active_rate))
             wf.writeframes(audio.tobytes())
 
-        return tmp_path, duration
+        return tmp_path, duration, voiced

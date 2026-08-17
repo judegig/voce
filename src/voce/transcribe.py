@@ -26,6 +26,48 @@ class TranscriptionResult:
     language: Optional[str] = None
 
 
+# Placeholders whisper.cpp and the APIs emit for audio they found no speech
+# in. Never something a person dictated, so these are dropped on sight.
+_NON_SPEECH_MARKERS = frozenset({
+    "blank_audio", "silence", "music", "inaudible", "no audio", "sound",
+    "applause", "background noise", "upbeat music",
+})
+
+# What Whisper hallucinates *as speech* when handed near-silence: stock
+# phrases from the YouTube captions in its training data. Only rejected when
+# the audio was already marginal (see is_silence_hallucination) -- "thank
+# you" is a real thing to dictate, and a confidently-voiced one is kept.
+_SILENCE_PHRASES = frozenset({
+    "thank you", "thank you very much", "thank you so much",
+    "thanks for watching", "thanks for watching the video",
+    "thank you for watching", "thanks", "you", "bye", "bye bye", "okay",
+    "please subscribe", "subscribe to my channel", "see you next time",
+    "subtitles by the amara.org community",
+})
+
+
+def is_silence_hallucination(text: str, *, marginal_audio: bool) -> bool:
+    """True if `text` is Whisper inventing speech out of near-silence.
+
+    The energy gate in audio.py stops most of these by never sending silent
+    audio at all, but it can only measure loudness -- a recording of a fan,
+    typing, or a couple of stray syllables of room noise clears it and still
+    gives Whisper nothing to work with. So the transcript gets checked too.
+
+    Matches the *whole* transcript only. "Thank you." alone off marginal
+    audio is the hallucination; "thank you" inside a real sentence is the
+    user talking, and a longer transcript containing one of these phrases is
+    never touched.
+    """
+    normalized = re.sub(r"\s+", " ", text).strip().strip("[]()*").lower()
+    normalized = normalized.strip(" .!?,-–—…").strip()
+    if not normalized:
+        return True
+    if normalized in _NON_SPEECH_MARKERS:
+        return True
+    return marginal_audio and normalized in _SILENCE_PHRASES
+
+
 def transcribe(audio_path: Path, settings: Settings) -> TranscriptionResult:
     engine = settings.transcription.engine
     if engine == "local":

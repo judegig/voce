@@ -337,11 +337,25 @@ after a few months away.
   model has no native way to say "there's no speech here," so near-silent
   audio makes it output a phrase from its training data instead, almost
   always "Thank you." (a lot of that training data is YouTube videos ending
-  in "thanks for watching"). Fixed by `SILENCE_PEAK_AMPLITUDE` in
-  `audio.py` — recordings whose loudest sample never exceeds that threshold
-  are discarded before any transcription engine sees them. If real quiet
-  speech starts getting silently dropped instead, lower that constant; if
-  hallucinated pastes come back, raise it.
+  in "thanks for watching"). Caught in two places:
+  - `audio.py` measures how much of a recording carries speech-level energy
+    (30ms frames whose RMS clears `SPEECH_RMS_THRESHOLD`) and discards it
+    below `MIN_SPEECH_SECONDS` of that, before any transcription engine sees
+    it. This deliberately measures *sustained* energy rather than a peak: a
+    peak test is decided by one sample, so a single transient clears it —
+    and every recording ends with one, because releasing the hotkey is
+    itself a key click into the mic.
+  - `transcribe.is_silence_hallucination()` is the backstop for audio that
+    clears the gate but still holds no speech (a fan, typing, room noise).
+    It drops a transcript that is *entirely* one of Whisper's stock silence
+    phrases, and only when the recording held under
+    `MARGINAL_SPEECH_SECONDS` of voiced audio — so a real, confidently
+    spoken "Thank you." is kept, as is any longer sentence containing the
+    phrase. Placeholders like `[BLANK_AUDIO]` are dropped unconditionally.
+
+  Discards are logged to the terminal. If real quiet speech starts getting
+  dropped, lower `SPEECH_RMS_THRESHOLD` or `MIN_SPEECH_SECONDS`; if
+  hallucinated pastes come back, raise them.
 - **Cleanup answers a dictated question instead of cleaning it up** (e.g.
   dictating "how are you doing" pastes "Great!" instead of "How are you
   doing?"). This would happen if the raw transcript is indistinguishable

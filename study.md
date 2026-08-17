@@ -629,14 +629,19 @@ volunteer.
 
 | Change | What happens | Why |
 |---|---|---|
-| `dtype="int16"` → `"float32"` | 💀 **App silently dies entirely.** Nothing ever pastes, no error | Peak can never exceed 1.0; threshold is 500, so *every* clip is discarded as silence. The threshold at [audio.py:20](src/voce/audio.py#L20) is in int16 units and nothing revalidates it |
-| `samplerate` 16000 → 8000 | ✅ Silence check still fine | Rate changes **how many** numbers, not their **size**. 30fps vs 60fps doesn't change how bright the room is. (3s → 24,000 samples) |
-| `SILENCE_PEAK_AMPLITUDE` 500 → 5000 | Normal speech discarded. User sees **nothing** — no text, no error ([app.py:141-144](src/voce/app.py#L141-L144) bare-returns). **Fails intermittently** — loud speech still works | Normal speech peaks 3,000–10,000, so 5,000 cuts ordinary talking, not just quiet talkers |
+| `dtype="int16"` → `"float32"` | 💀 **App silently dies entirely.** Nothing ever pastes, no error | RMS can never reach 1.0; the threshold is 180, so *no* frame is ever voiced and every clip is discarded as silence. `SPEECH_RMS_THRESHOLD` is in int16 units and nothing revalidates it |
+| `samplerate` 16000 → 8000 | ✅ Silence check still fine | Rate changes **how many** numbers, not their **size**. 30fps vs 60fps doesn't change how bright the room is. Frame length is derived from the live rate, so frames stay 30ms either way |
+| `SPEECH_RMS_THRESHOLD` 180 → 1800 | Normal speech discarded. User sees **nothing** — no text, no error ([app.py](src/voce/app.py) bare-returns) | Speech *frame RMS* runs several hundred to a few thousand, so 1,800 cuts ordinary talking, not just quiet talkers |
+| Voiced-frame test → peak test | 🐛 **The original bug returns.** Silence + a key click transcribes as "Thank you." | Peak is decided by a single sample, so one transient clears it — and releasing the hotkey *is* a click into the mic. Speech is sustained energy; measure duration, not the loudest instant |
 | `preroll_seconds` 0.3 → 3.0 | 48,000 samples (96 KB) buffered. Pre-press audio pollutes the transcript **and** adds 3 seconds to transcribe every utterance | Latency is the real reason not to set it high "to be safe." Previous dictation's tail can't leak in — `stop()` clears `_preroll` ([audio.py:290-294](src/voce/audio.py#L290-L294)) |
 
 **The int16 range, since it anchors three of the above:** −32,768 to
 +32,767. Silence ≈ 0, normal speech peaks ≈ 3,000–10,000, a shout ≈
 25,000. **Not 0..1** — that's the float32 range *inside* whisper.cpp.
+Peak and RMS are different measures of the same samples: RMS averages
+energy over a window, so it runs several times lower than peak (idle room
+tone ≈ 40, speech ≈ 1,000–5,000) and, unlike peak, a lone spike barely
+moves it.
 
 **The ring buffer, traced** (cap 4,800 samples, chunks of 1,000) — the
 concrete-values version, since the abstract one didn't land:
